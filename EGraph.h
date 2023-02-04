@@ -244,6 +244,12 @@ private:
 
 struct PatternTerm;
 
+// match against symbols (a.k.a. pattern variables) for algebraic rewriting,
+// match against pattern terms for rewriting concrete named operations/terms,
+// e.g. the identity rule for a specific operation would look like:
+// <Symbol x> <PatternTerm op> <PatternTerm identity> -> <Symbol x>
+// and the zero rule would look like:
+// <Symbol x> <PatternTerm op> <PatternTerm zero> -> <PatternTerm zero>
 using Pattern = Variant<Symbol, PatternTerm>;
 
 struct PatternTerm final
