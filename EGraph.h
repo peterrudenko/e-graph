@@ -1,20 +1,27 @@
+/*
+ * A simple e-graph implementation for educational purposes
+ *
+ * Copyright waived by Peter Rudenko <peter.rudenko@gmail.com>, 2023
+ *
+ * The contents of this file is free and unencumbered software released into the
+ * public domain. For more information, please refer to <http://unlicense.org/>
+ */
+
 #pragma once
 
+#include <cassert>
 #include <memory>
-#include <utility>
 #include <vector>
-#include <functional>
 #include <optional>
-
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "performance-unnecessary-value-param"
-#pragma ide diagnostic ignored "modernize-use-nodiscard"
+#include <variant>
+#include <unordered_map>
+#include <algorithm>
 
 namespace e
 {
 
 //------------------------------------------------------------------------------
-// Shortcuts for readability
+// Shortcuts and helpers
 
 template <typename T>
 using UniquePointer = std::unique_ptr<T>;
@@ -28,10 +35,6 @@ inline UniquePointer<T> make(Args &&...args)
     return UniquePointer<T>(new T(std::forward<Args>(args)...));
 }
 
-using std::move;
-using std::sort;
-using std::unique;
-
 template <typename T>
 using Vector = std::vector<T>;
 
@@ -41,8 +44,8 @@ void appendVector(Vector<T> &v1, const Vector<T> &v2)
     v1.insert(v1.begin(), v2.begin(), v2.end());
 }
 
-template <typename T>
-using Function = std::function<T>;
+template <typename T1, typename T2>
+using Variant = std::variant<T1, T2>;
 
 template <typename T>
 using Optional = std::optional<T>;
@@ -53,12 +56,16 @@ using std::nullopt;
 template <typename K, typename V, typename H = std::hash<K>, typename E = std::equal_to<K>>
 using HashMap = std::unordered_map<K, V, H, E>;
 
-using String = std::string;
-
 using ClassId = int32_t;
 
+// Symbols are used to name terms, and for now they are just strings,
+// but in future it could be refactored to use a symbol pool instead,
+// e.g. Identifier class in JUCE, where the construction is slower,
+// but all comparison operators are as simple as comparing the pointers
+using Symbol = std::string;
+
 //------------------------------------------------------------------------------
-// A simple disjoint-set forest implementation with optional path compression
+// Disjoint-set forest a.k.a. union-find
 
 template <typename Id>
 class UnionFind final
@@ -84,6 +91,7 @@ public:
 
     Id find(Id id)
     {
+        // The non-const find method also does path compression
         while (id != this->parents[id])
         {
             const auto grandparent = this->parents[this->parents[id]];
@@ -100,11 +108,6 @@ public:
         return root1;
     }
 
-    auto getSize() const noexcept
-    {
-        return this->parents.size();
-    }
-
 private:
 
     Vector<Id> parents;
@@ -117,7 +120,9 @@ class Term
 {
 public:
 
-    Term() = default;
+    explicit Term(const Symbol &name, const Vector<ClassId> &children = {}) :
+        name(name), childrenIds(children) {}
+
     virtual ~Term() = default;
 
     using Ptr = SharedPointer<Term>;
@@ -126,7 +131,7 @@ public:
     {
         auto operator()(const Term::Ptr &x) const
         {
-            return std::hash<String>()(x->getName());
+            return std::hash<Symbol>()(x->getName());
         }
     };
 
@@ -139,22 +144,7 @@ public:
         }
     };
 
-    static Term::Ptr makeTerm(const String &name)
-    {
-        auto term = make<Term>();
-        term->name = name;
-        return term;
-    }
-
-    static Term::Ptr makeOperation(const String &name, const Vector<ClassId> &children)
-    {
-        auto term = make<Term>();
-        term->name = name;
-        term->childrenIds = children;
-        return term;
-    }
-
-    const String &getName() const noexcept
+    const Symbol &getName() const noexcept
     {
         return this->name;
     }
@@ -175,7 +165,7 @@ public:
 
 private:
 
-    String name;
+    const Symbol name;
 
     // One of the key tricks here is that terms, a.k.a. e-nodes,
     // are connected to equivalence classes, not other terms:
@@ -201,9 +191,9 @@ public:
 
     ClassId getId() const noexcept { return this->id; }
 
-    bool isEmpty() const noexcept { return this->terms.empty(); }
-
     auto getNumParents() const noexcept { return this->parents.size(); }
+
+    const Vector<Term::Ptr> &getTerms() const noexcept { return this->terms; }
 
     const Vector<TermWithLeafId> &getParents() const noexcept { return this->parents; }
 
@@ -228,7 +218,7 @@ public:
         }
 
         // deduplicate
-        sort(this->terms.begin(), this->terms.end());
+        std::sort(this->terms.begin(), this->terms.end());
         this->terms.erase(std::unique(this->terms.begin(), this->terms.end()), this->terms.end());
 
         // todo test:
@@ -242,11 +232,67 @@ public:
 
 private:
 
-    ClassId id;
+    const ClassId id;
 
     Vector<Term::Ptr> terms;
 
     Vector<TermWithLeafId> parents;
+};
+
+//------------------------------------------------------------------------------
+// E-matching and rewriting stuff
+
+struct PatternTerm;
+
+using Pattern = Variant<Symbol, PatternTerm>;
+
+struct PatternTerm final
+{
+    Symbol name;
+    Vector<Pattern> arguments;
+};
+
+struct SymbolBindings final
+{
+    using Ptr = SharedPointer<SymbolBindings>;
+
+    Optional<ClassId> find(const Symbol &symbol)
+    {
+        const auto result = this->bindings.find(symbol);
+        if (result == this->bindings.end())
+        {
+            return nullopt;
+        }
+
+        return result->second;
+    }
+
+    void add(const Symbol &symbol, ClassId classId)
+    {
+        this->bindings[symbol] = classId;
+    }
+
+    HashMap<Symbol, ClassId> bindings;
+};
+
+struct RewriteRule final
+{
+    Pattern leftHand;
+    Pattern rightHand;
+};
+
+struct Match final
+{
+    ClassId id1;
+    ClassId id2;
+};
+
+Pattern makePattern(const Symbol &name, const Vector<Pattern> &arguments = {})
+{
+    PatternTerm term;
+    term.name = name;
+    term.arguments = arguments;
+    return Pattern(term);
 };
 
 //------------------------------------------------------------------------------
@@ -256,7 +302,7 @@ class Graph final
 {
 public:
 
-    bool find(ClassId classId) const noexcept
+    ClassId find(ClassId classId) const noexcept
     {
         return this->unionFind.find(classId);
     }
@@ -266,14 +312,14 @@ public:
         return this->classes.size();
     }
 
-    ClassId addTerm(const String &name)
+    ClassId addTerm(const Symbol &name)
     {
-        return this->add(Term::makeTerm(name));
+        return this->add(make<Term>(name));
     }
 
-    ClassId addOperation(const String &name, const Vector<ClassId> &children)
+    ClassId addOperation(const Symbol &name, const Vector<ClassId> &children)
     {
-        return this->add(Term::makeOperation(name, children));
+        return this->add(make<Term>(name, children));
     }
 
     bool unite(ClassId termId1, ClassId termId2)
@@ -342,6 +388,147 @@ public:
         }
     }
 
+    void rewrite(const RewriteRule &rewriteRule)
+    {
+        Vector<Match> matches;
+
+        for (const auto &[classId, classPtr] : this->classes)
+        {
+            SymbolBindings::Ptr emptyBindings = make<SymbolBindings>();
+            const auto matchResult = this->matchPattern(rewriteRule.leftHand, classId, emptyBindings);
+            for (const auto &bindings : matchResult)
+            {
+                matches.push_back({this->instantiatePattern(rewriteRule.leftHand, bindings),
+                    this->instantiatePattern(rewriteRule.rightHand, bindings)});
+            }
+        }
+
+        for (const auto &match : matches)
+        {
+            this->unite(match.id1, match.id2);
+        }
+    }
+
+private:
+
+    Vector<SymbolBindings::Ptr> matchPattern(const Pattern &pattern,
+        ClassId classId, SymbolBindings::Ptr bindings)
+    {
+        if (const auto *patternVariable = std::get_if<Symbol>(&pattern))
+        {
+            return this->matchVariable(*patternVariable, classId, bindings);
+        }
+        else if (const auto *patternTerm = std::get_if<PatternTerm>(&pattern))
+        {
+            return this->matchTerm(*patternTerm, classId, bindings);
+        }
+
+        assert(false);
+        return {};
+    }
+
+    Vector<SymbolBindings::Ptr> matchVariable(const Symbol &symbol,
+        ClassId classId, SymbolBindings::Ptr bindings)
+    {
+        Vector<SymbolBindings::Ptr> result;
+        const auto rootId = this->unionFind.find(classId);
+        if (const auto matchedClassId = bindings->find(symbol))
+        {
+            if (this->unionFind.find(matchedClassId.value()) == rootId)
+            {
+                result.push_back(bindings);
+            }
+        }
+        else
+        {
+            bindings->add(symbol, rootId);
+            result.push_back(bindings);
+        }
+
+        return result;
+    }
+
+    Vector<SymbolBindings::Ptr> matchTerm(const PatternTerm &patternTerm,
+        ClassId classId, SymbolBindings::Ptr bindings)
+    {
+        const auto rootId = this->unionFind.find(classId);
+        assert(this->classes.find(rootId) != this->classes.end());
+
+        Vector<SymbolBindings::Ptr> result;
+        for (const auto &term : this->classes.at(rootId)->getTerms())
+        {
+            if (term->getName() != patternTerm.name ||
+                term->getChildrenIds().size() != patternTerm.arguments.size())
+            {
+                continue;
+            }
+
+            for (const auto &subBinding :
+                this->matchMany(patternTerm.arguments, term->getChildrenIds(), bindings))
+            {
+                result.push_back(subBinding);
+            }
+        }
+
+        return result;
+    }
+
+    Vector<SymbolBindings::Ptr> matchMany(const Vector<Pattern> &patterns,
+        const Vector<ClassId> &classIds, SymbolBindings::Ptr bindings)
+    {
+        if (patterns.empty())
+        {
+            return {bindings};
+        }
+
+        Vector<SymbolBindings::Ptr> result;
+        for (const auto &subBinding1 : this->matchPattern(patterns.front(), classIds.front(), bindings))
+        {
+            const Vector<Pattern> subPatterns(patterns.begin() + 1, patterns.end());
+            const Vector<ClassId> subClasses(classIds.begin() + 1, classIds.end());
+            for (const auto &subBinding2 : this->matchMany(subPatterns, subClasses, subBinding1))
+            {
+                result.push_back(subBinding2);
+            }
+        }
+
+        return result;
+    }
+
+    ClassId instantiatePattern(const Pattern &pattern, SymbolBindings::Ptr bindings)
+    {
+        if (const auto *subVariable = std::get_if<Symbol>(&pattern))
+        {
+            return this->instantiateVariable(*subVariable, bindings);
+        }
+        else if (const auto *subTerm = std::get_if<PatternTerm>(&pattern))
+        {
+            return this->instantiateOperation(*subTerm, bindings);
+        }
+
+        assert(false);
+        return -1;
+    }
+
+    ClassId instantiateVariable(const Symbol &symbol, SymbolBindings::Ptr bindings)
+    {
+        const auto result = bindings->find(symbol);
+        assert(result);
+        return result.value();
+    }
+
+    ClassId instantiateOperation(const PatternTerm &patternTerm, SymbolBindings::Ptr bindings)
+    {
+        Vector<ClassId> children;
+
+        for (const auto &pattern : patternTerm.arguments)
+        {
+            children.push_back(this->instantiatePattern(pattern, bindings));
+        }
+
+        return this->add(make<Term>(patternTerm.name, children));
+    }
+
 private:
 
     ClassId add(Term::Ptr term)
@@ -361,7 +548,7 @@ private:
                 this->classes[childClassId]->addParent(term, newId);
             }
 
-            this->classes[newId] = move(newClass);
+            this->classes[newId] = std::move(newClass);
             this->termsCache.insert({term, newId});
             this->dirtyTerms.push_back({term, newId});
 
@@ -391,5 +578,3 @@ private:
     Vector<TermWithLeafId> dirtyTerms;
 };
 } // namespace e
-
-#pragma clang diagnostic pop
