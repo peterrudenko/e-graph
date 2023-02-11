@@ -116,14 +116,12 @@ private:
 //------------------------------------------------------------------------------
 // E-node, how they call it the paper
 
-class Term
+class Term final
 {
 public:
 
     explicit Term(const Symbol &name, const Vector<ClassId> &children = {}) :
         name(name), childrenIds(children) {}
-
-    virtual ~Term() = default;
 
     using Ptr = SharedPointer<Term>;
 
@@ -146,7 +144,7 @@ public:
         return this->name;
     }
 
-    virtual const Vector<ClassId> &getChildrenIds() const
+    const auto &getChildrenIds() const
     {
         return this->childrenIds;
     }
@@ -186,13 +184,20 @@ public:
     Class(ClassId id, Term::Ptr term) :
         id(id), terms({term}) {}
 
-    ClassId getId() const noexcept { return this->id; }
+    ClassId getId() const noexcept
+    {
+        return this->id;
+    }
 
-    auto getNumParents() const noexcept { return this->parents.size(); }
+    const auto &getTerms() const noexcept
+    {
+        return this->terms;
+    }
 
-    const Vector<Term::Ptr> &getTerms() const noexcept { return this->terms; }
-
-    const Vector<TermWithLeafId> &getParents() const noexcept { return this->parents; }
+    const auto &getParents() const noexcept
+    {
+        return this->parents;
+    }
 
     void addParent(Term::Ptr term, ClassId parentClassId)
     {
@@ -290,7 +295,7 @@ struct Match final
     ClassId id2;
 };
 
-Pattern makePattern(const Symbol &name, const Vector<Pattern> &arguments = {})
+Pattern makePatternTerm(const Symbol &name, const Vector<Pattern> &arguments = {})
 {
     PatternTerm term;
     term.name = name;
@@ -340,8 +345,8 @@ public:
         }
 
         // make sure the new root has more parents
-        if (this->classes[rootId1]->getNumParents() <
-            this->classes[rootId2]->getNumParents())
+        if (this->classes[rootId1]->getParents().size() <
+            this->classes[rootId2]->getParents().size())
         {
             std::swap(rootId1, rootId2);
         }

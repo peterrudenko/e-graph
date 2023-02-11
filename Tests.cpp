@@ -33,8 +33,8 @@ void rewriteAssociativityRuleTest()
     const auto z = e::Symbol("z");
 
     e::RewriteRule associativityRule;
-    associativityRule.leftHand = e::makePattern("+", {e::makePattern("+", {x, y}), z});
-    associativityRule.rightHand = e::makePattern("+", {x, e::makePattern("+", {y, z})});
+    associativityRule.leftHand = e::makePatternTerm("+", {e::makePatternTerm("+", {x, y}), z});
+    associativityRule.rightHand = e::makePatternTerm("+", {x, e::makePatternTerm("+", {y, z})});
 
     // when
     const auto a = eGraph.addTerm("a");
@@ -66,8 +66,11 @@ void rewriteAssociativityRuleTest()
     eGraph.restoreInvariants();
     assert(eGraph.find(ab_c_d) != eGraph.find(a_b_cd));
 
-    eGraph.rewrite(associativityRule);
-    eGraph.rewrite(associativityRule); // needs at least 2 iterations
+    for (int i = 0; i < 5; ++i)
+    {
+        // needs a few iterations
+        eGraph.rewrite(associativityRule);
+    }
     eGraph.restoreInvariants();
     assert(eGraph.find(ab_c_d) == eGraph.find(a_b_cd));
 }
@@ -78,7 +81,7 @@ void rewriteIdentityRuleTest()
 
     // given
     e::RewriteRule identityRule;
-    identityRule.leftHand = e::makePattern("*", {e::Symbol("x"), e::makePattern("1")});
+    identityRule.leftHand = e::makePatternTerm("*", {e::Symbol("x"), e::makePatternTerm("1")});
     identityRule.rightHand = e::Symbol("x");
 
     // when
@@ -109,8 +112,8 @@ void rewriteZeroRuleTest()
 
     // given
     e::RewriteRule zeroRule;
-    zeroRule.leftHand = e::makePattern("*", {e::Symbol("x"), e::makePattern("0")});
-    zeroRule.rightHand = e::makePattern("0");
+    zeroRule.leftHand = e::makePatternTerm("*", {e::Symbol("x"), e::makePatternTerm("0")});
+    zeroRule.rightHand = e::makePatternTerm("0");
 
     // when
     const auto a = eGraph.addTerm("a");
