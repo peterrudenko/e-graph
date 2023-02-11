@@ -17,7 +17,7 @@ void congruenceTest()
     eGraph.restoreInvariants();
 
     // then
-    assert(eGraph.getNumClasses() == 3);
+    assert(eGraph.getClasses().size() == 3);
     assert(eGraph.find(x) == eGraph.find(y));
     assert(eGraph.find(ax) == eGraph.find(ay));
     assert(eGraph.find(ax) != eGraph.find(a));

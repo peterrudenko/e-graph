@@ -135,14 +135,11 @@ public:
         }
     };
 
-    struct Equality final
+    friend bool operator ==(const Term::Ptr &l, const Term::Ptr &r)
     {
-        auto operator()(const Term::Ptr &l, const Term::Ptr &r) const
-        {
-            return l.get() == r.get() ||
-                   (l->getName() == r->getName() && l->getChildrenIds() == r->getChildrenIds());
-        }
-    };
+        return l.get() == r.get() ||
+               (l->name == r->name && l->childrenIds == r->childrenIds);
+    }
 
     const Symbol &getName() const noexcept
     {
@@ -313,9 +310,14 @@ public:
         return this->unionFind.find(classId);
     }
 
-    auto getNumClasses() const noexcept
+    const auto &getTerms() const noexcept
     {
-        return this->classes.size();
+        return this->termsCache;
+    }
+
+    const auto &getClasses() const noexcept
+    {
+        return this->classes;
     }
 
     ClassId addTerm(const Symbol &name)
@@ -415,8 +417,6 @@ public:
         }
     }
 
-private:
-
     Vector<SymbolBindings::Ptr> matchPattern(const Pattern &pattern,
         ClassId classId, SymbolBindings::Ptr bindings)
     {
@@ -432,6 +432,8 @@ private:
         assert(false);
         return {};
     }
+
+private:
 
     Vector<SymbolBindings::Ptr> matchVariable(const Symbol &symbol,
         ClassId classId, SymbolBindings::Ptr bindings)
@@ -550,8 +552,9 @@ private:
 
             for (const auto &childClassId : term->getChildrenIds())
             {
-                assert(this->classes.find(childClassId) != this->classes.end());
-                this->classes[childClassId]->addParent(term, newId);
+                const auto rootChildClassId = this->unionFind.find(childClassId);
+                assert(this->classes.find(rootChildClassId) != this->classes.end());
+                this->classes[rootChildClassId]->addParent(term, newId);
             }
 
             this->classes[newId] = std::move(newClass);
@@ -579,7 +582,7 @@ private:
 
     HashMap<ClassId, UniquePointer<Class>> classes;
 
-    HashMap<Term::Ptr, ClassId, Term::Hash, Term::Equality> termsCache;
+    HashMap<Term::Ptr, ClassId, Term::Hash> termsCache;
 
     Vector<TermWithLeafId> dirtyTerms;
 };
