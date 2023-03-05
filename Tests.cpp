@@ -54,7 +54,6 @@ void rewriteAssociativityRuleTest()
     assert(eGraph.find(ab_c) != eGraph.find(a_bc));
 
     eGraph.rewrite(associativityRule);
-    eGraph.restoreInvariants();
     assert(eGraph.find(ab_c) == eGraph.find(a_bc));
 
     // and when
@@ -66,12 +65,9 @@ void rewriteAssociativityRuleTest()
     eGraph.restoreInvariants();
     assert(eGraph.find(ab_c_d) != eGraph.find(a_b_cd));
 
-    for (int i = 0; i < 5; ++i)
-    {
-        // needs a few iterations
-        eGraph.rewrite(associativityRule);
-    }
-    eGraph.restoreInvariants();
+    // needs a few iterations
+    eGraph.rewrite(associativityRule);
+    eGraph.rewrite(associativityRule);
     assert(eGraph.find(ab_c_d) == eGraph.find(a_b_cd));
 }
 
@@ -100,7 +96,6 @@ void rewriteIdentityRuleTest()
     assert(eGraph.find(full) != eGraph.find(abbc));
 
     eGraph.rewrite(identityRule);
-    eGraph.restoreInvariants();
     assert(eGraph.find(ab) != eGraph.find(a));
     assert(eGraph.find(full) != eGraph.find(one));
     assert(eGraph.find(full) == eGraph.find(abbc));
@@ -131,7 +126,6 @@ void rewriteZeroRuleTest()
     assert(eGraph.find(full) != eGraph.find(zero));
 
     eGraph.rewrite(zeroRule);
-    eGraph.restoreInvariants();
     assert(eGraph.find(ab) != eGraph.find(b));
     assert(eGraph.find(abbc) != eGraph.find(zero));
     assert(eGraph.find(full) == eGraph.find(zero));

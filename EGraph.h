@@ -371,6 +371,8 @@ struct Graph final
         {
             this->unite(match.id1, match.id2);
         }
+
+        this->restoreInvariants();
     }
 
     Vector<SymbolBindings::Ptr> matchPattern(const Pattern &pattern,
