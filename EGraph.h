@@ -68,10 +68,8 @@ using Symbol = std::string;
 // Disjoint-set forest a.k.a. union-find
 
 template <typename Id>
-class UnionFind final
+struct UnionFind final
 {
-public:
-
     Id addSet()
     {
         const auto id = this->parents.size();
@@ -108,18 +106,14 @@ public:
         return root1;
     }
 
-private:
-
     Vector<Id> parents;
 };
 
 //------------------------------------------------------------------------------
 // E-node, how they call it the paper
 
-class Term final
+struct Term final
 {
-public:
-
     explicit Term(const Symbol &name, const Vector<ClassId> &children = {}) :
         name(name), childrenIds(children) {}
 
@@ -129,7 +123,7 @@ public:
     {
         auto operator()(const Term::Ptr &x) const
         {
-            return std::hash<Symbol>()(x->getName());
+            return std::hash<Symbol>()(x->name);
         }
     };
 
@@ -137,16 +131,6 @@ public:
     {
         return l.get() == r.get() ||
                (l->name == r->name && l->childrenIds == r->childrenIds);
-    }
-
-    const Symbol &getName() const noexcept
-    {
-        return this->name;
-    }
-
-    const auto &getChildrenIds() const
-    {
-        return this->childrenIds;
     }
 
     template <typename UF>
@@ -157,8 +141,6 @@ public:
             id = unionFind.find(id);
         }
     }
-
-private:
 
     const Symbol name;
 
@@ -177,27 +159,10 @@ struct TermWithLeafId final
 //------------------------------------------------------------------------------
 // Equivalence class
 
-class Class final
+struct Class final
 {
-public:
-
     Class(ClassId id, Term::Ptr term) :
         id(id), terms({term}) {}
-
-    ClassId getId() const noexcept
-    {
-        return this->id;
-    }
-
-    const auto &getTerms() const noexcept
-    {
-        return this->terms;
-    }
-
-    const auto &getParents() const noexcept
-    {
-        return this->parents;
-    }
 
     void addParent(Term::Ptr term, ClassId parentClassId)
     {
@@ -231,8 +196,6 @@ public:
 
         // fixme do we also need to deduplicate parents here?
     }
-
-private:
 
     const ClassId id;
 
@@ -306,25 +269,13 @@ Pattern makePatternTerm(const Symbol &name, const Vector<Pattern> &arguments = {
 //------------------------------------------------------------------------------
 // E-graph
 
-class Graph final
+struct Graph final
 {
-public:
-
     ClassId find(ClassId classId) const noexcept
     {
         return this->unionFind.find(classId);
     }
-
-    const auto &getTerms() const noexcept
-    {
-        return this->termsCache;
-    }
-
-    const auto &getClasses() const noexcept
-    {
-        return this->classes;
-    }
-
+    
     ClassId addTerm(const Symbol &name)
     {
         return this->add(make<Term>(name));
@@ -345,8 +296,8 @@ public:
         }
 
         // make sure the new root has more parents
-        if (this->classes[rootId1]->getParents().size() <
-            this->classes[rootId2]->getParents().size())
+        if (this->classes[rootId1]->parents.size() <
+            this->classes[rootId2]->parents.size())
         {
             std::swap(rootId1, rootId2);
         }
@@ -356,10 +307,10 @@ public:
         auto *class1 = this->classes[rootId1].get();
         const auto *class2 = this->classes[rootId2].get();
 
-        assert(rootId1 == class1->getId());
-        assert(rootId2 == class2->getId());
+        assert(rootId1 == class1->id);
+        assert(rootId2 == class2->id);
 
-        appendVector(this->dirtyTerms, class2->getParents());
+        appendVector(this->dirtyTerms, class2->parents);
 
         class1->uniteWith(class2);
 
@@ -438,8 +389,6 @@ public:
         return {};
     }
 
-private:
-
     Vector<SymbolBindings::Ptr> matchVariable(const Symbol &symbol,
         ClassId classId, SymbolBindings::Ptr bindings)
     {
@@ -468,16 +417,16 @@ private:
         assert(this->classes.find(rootId) != this->classes.end());
 
         Vector<SymbolBindings::Ptr> result;
-        for (const auto &term : this->classes.at(rootId)->getTerms())
+        for (const auto &term : this->classes.at(rootId)->terms)
         {
-            if (term->getName() != patternTerm.name ||
-                term->getChildrenIds().size() != patternTerm.arguments.size())
+            if (term->name != patternTerm.name ||
+                term->childrenIds.size() != patternTerm.arguments.size())
             {
                 continue;
             }
 
             for (const auto &subBinding :
-                this->matchMany(patternTerm.arguments, term->getChildrenIds(), bindings))
+                this->matchMany(patternTerm.arguments, term->childrenIds, bindings))
             {
                 result.push_back(subBinding);
             }
@@ -542,8 +491,6 @@ private:
         return this->add(make<Term>(patternTerm.name, children));
     }
 
-private:
-
     ClassId add(Term::Ptr term)
     {
         if (auto existingClassId = this->lookup(term))
@@ -555,7 +502,7 @@ private:
             const auto newId = this->unionFind.addSet();
             auto newClass = make<Class>(newId, term);
 
-            for (const auto &childClassId : term->getChildrenIds())
+            for (const auto &childClassId : term->childrenIds)
             {
                 const auto rootChildClassId = this->unionFind.find(childClassId);
                 assert(this->classes.find(rootChildClassId) != this->classes.end());
@@ -580,8 +527,6 @@ private:
 
         return nullopt;
     }
-
-private:
 
     UnionFind<ClassId> unionFind;
 
