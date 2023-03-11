@@ -23,46 +23,44 @@ namespace e
 //------------------------------------------------------------------------------
 // Shortcuts and helpers
 
-template <typename T>
-using UniquePointer = std::unique_ptr<T>;
+using ClassId = int32_t;
+
+// Symbols are used to name terms, and for now they are just strings,
+// but in future it could be refactored to use a symbol pool instead,
+// so that comparing them would be as fast as comparing pointers
+using Symbol = std::string;
+
+// In future this should probably be replaced by some more performant
+// or cache-friendly unordered_map-compatible hash map implementation
+template <typename K, typename V, typename H = std::hash<K>>
+using HashMap = std::unordered_map<K, V, H>;
 
 template <typename T>
 using SharedPointer = std::shared_ptr<T>;
 
+template <typename T>
+using UniquePointer = std::unique_ptr<T>;
+
 template <typename T, typename... Args>
-inline UniquePointer<T> make(Args &&...args)
+inline auto make(Args &&...args)
 {
     return UniquePointer<T>(new T(std::forward<Args>(args)...));
 }
 
 template <typename T>
-using Vector = std::vector<T>;
-
-template <typename T>
-void appendVector(Vector<T> &v1, const Vector<T> &v2)
-{
-    v1.insert(v1.begin(), v2.begin(), v2.end());
-}
+using Optional = std::optional<T>;
 
 template <typename T1, typename T2>
 using Variant = std::variant<T1, T2>;
 
 template <typename T>
-using Optional = std::optional<T>;
-using std::nullopt;
+using Vector = std::vector<T>;
 
-// In future this should probably be replaced by some more performant
-// or cache-friendly unordered_map-compatible hash map implementation
-template <typename K, typename V, typename H = std::hash<K>, typename E = std::equal_to<K>>
-using HashMap = std::unordered_map<K, V, H, E>;
-
-using ClassId = int32_t;
-
-// Symbols are used to name terms, and for now they are just strings,
-// but in future it could be refactored to use a symbol pool instead,
-// e.g. Identifier class in JUCE, where the construction is slower,
-// but all comparison operators are as simple as comparing the pointers
-using Symbol = std::string;
+template <typename T>
+inline void append(Vector<T> &v1, const Vector<T> &v2)
+{
+    v1.insert(v1.end(), v2.begin(), v2.end());
+}
 
 //------------------------------------------------------------------------------
 // Disjoint-set forest a.k.a. union-find
@@ -110,7 +108,7 @@ struct UnionFind final
 };
 
 //------------------------------------------------------------------------------
-// E-node, how they call it the paper
+// E-node, a term of some language
 
 struct Term final
 {
@@ -127,7 +125,7 @@ struct Term final
         }
     };
 
-    friend bool operator ==(const Term::Ptr &l, const Term::Ptr &r)
+    friend bool operator==(const Term::Ptr &l, const Term::Ptr &r)
     {
         return l.get() == r.get() ||
                (l->name == r->name && l->childrenIds == r->childrenIds);
@@ -161,6 +159,9 @@ struct TermWithLeafId final
 
 struct Class final
 {
+    explicit Class(ClassId id) :
+        id(id) {}
+
     Class(ClassId id, Term::Ptr term) :
         id(id), terms({term}) {}
 
@@ -172,8 +173,8 @@ struct Class final
     void uniteWith(const Class *other)
     {
         assert(other != this);
-        appendVector(this->terms, other->terms);
-        appendVector(this->parents, other->parents);
+        append(this->terms, other->terms);
+        append(this->parents, other->parents);
     }
 
     template <typename UF>
@@ -208,14 +209,15 @@ struct Class final
 // E-matching and rewriting stuff
 
 struct PatternTerm;
+using PatternVariable = Symbol;
 
-// match against symbols (a.k.a. pattern variables) for algebraic rewriting,
+// match against pattern variables (or just symbols) for algebraic rewriting,
 // match against pattern terms for rewriting concrete named operations/terms,
 // e.g. the identity rule for a specific operation would look like:
 // <Symbol x> <PatternTerm op> <PatternTerm identity> -> <Symbol x>
 // and the zero rule would look like:
 // <Symbol x> <PatternTerm op> <PatternTerm zero> -> <PatternTerm zero>
-using Pattern = Variant<Symbol, PatternTerm>;
+using Pattern = Variant<PatternVariable, PatternTerm>;
 
 struct PatternTerm final
 {
@@ -232,7 +234,7 @@ struct SymbolBindings final
         const auto result = this->bindings.find(symbol);
         if (result == this->bindings.end())
         {
-            return nullopt;
+            return {};
         }
 
         return result->second;
@@ -275,7 +277,7 @@ struct Graph final
     {
         return this->unionFind.find(classId);
     }
-    
+
     ClassId addTerm(const Symbol &name)
     {
         return this->add(make<Term>(name));
@@ -310,7 +312,7 @@ struct Graph final
         assert(rootId1 == class1->id);
         assert(rootId2 == class2->id);
 
-        appendVector(this->dirtyTerms, class2->parents);
+        append(this->dirtyTerms, class2->parents);
 
         class1->uniteWith(class2);
 
@@ -378,7 +380,7 @@ struct Graph final
     Vector<SymbolBindings::Ptr> matchPattern(const Pattern &pattern,
         ClassId classId, SymbolBindings::Ptr bindings)
     {
-        if (const auto *patternVariable = std::get_if<Symbol>(&pattern))
+        if (const auto *patternVariable = std::get_if<PatternVariable>(&pattern))
         {
             return this->matchVariable(*patternVariable, classId, bindings);
         }
@@ -391,12 +393,12 @@ struct Graph final
         return {};
     }
 
-    Vector<SymbolBindings::Ptr> matchVariable(const Symbol &symbol,
+    Vector<SymbolBindings::Ptr> matchVariable(const PatternVariable &variable,
         ClassId classId, SymbolBindings::Ptr bindings)
     {
         Vector<SymbolBindings::Ptr> result;
         const auto rootId = this->unionFind.find(classId);
-        if (const auto matchedClassId = bindings->find(symbol))
+        if (const auto matchedClassId = bindings->find(variable))
         {
             if (this->unionFind.find(matchedClassId.value()) == rootId)
             {
@@ -405,7 +407,7 @@ struct Graph final
         }
         else
         {
-            bindings->add(symbol, rootId);
+            bindings->add(variable, rootId);
             result.push_back(bindings);
         }
 
@@ -461,7 +463,7 @@ struct Graph final
 
     ClassId instantiatePattern(const Pattern &pattern, SymbolBindings::Ptr bindings)
     {
-        if (const auto *subVariable = std::get_if<Symbol>(&pattern))
+        if (const auto *subVariable = std::get_if<PatternVariable>(&pattern))
         {
             return this->instantiateVariable(*subVariable, bindings);
         }
@@ -474,9 +476,9 @@ struct Graph final
         return -1;
     }
 
-    ClassId instantiateVariable(const Symbol &symbol, SymbolBindings::Ptr bindings)
+    ClassId instantiateVariable(const PatternVariable &variable, SymbolBindings::Ptr bindings)
     {
-        const auto result = bindings->find(symbol);
+        const auto result = bindings->find(variable);
         assert(result);
         return result.value();
     }
@@ -527,7 +529,7 @@ struct Graph final
             return existingTerm->second;
         }
 
-        return nullopt;
+        return {};
     }
 
     UnionFind<ClassId> unionFind;
