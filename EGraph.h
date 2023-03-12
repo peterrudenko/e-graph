@@ -229,6 +229,10 @@ struct SymbolBindings final
 {
     using Ptr = SharedPointer<SymbolBindings>;
 
+    SymbolBindings() = default;
+    explicit SymbolBindings(SymbolBindings::Ptr &other) :
+        bindings(other->bindings) {}
+
     Optional<ClassId> find(const Symbol &symbol)
     {
         const auto result = this->bindings.find(symbol);
@@ -407,8 +411,9 @@ struct Graph final
         }
         else
         {
-            bindings->add(variable, rootId);
-            result.push_back(bindings);
+            SymbolBindings::Ptr newBindings = make<SymbolBindings>(bindings);
+            newBindings->add(variable, rootId);
+            result.push_back(newBindings);
         }
 
         return result;

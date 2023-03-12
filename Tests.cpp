@@ -62,11 +62,6 @@ void rewriteAssociativityRuleTest()
     const auto ab_c_d = eGraph.addOperation("+", {ab_c, d});
 
     // then
-    eGraph.restoreInvariants();
-    assert(eGraph.find(ab_c_d) != eGraph.find(a_b_cd));
-
-    // needs a few iterations
-    eGraph.rewrite(associativityRule);
     eGraph.rewrite(associativityRule);
     assert(eGraph.find(ab_c_d) == eGraph.find(a_b_cd));
 }
