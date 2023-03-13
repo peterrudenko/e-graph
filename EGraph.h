@@ -147,6 +147,13 @@ struct Term final
     Vector<ClassId> childrenIds;
 };
 
+// The term id here is the leaf id, while the canonical class id is the root id:
+struct TermWithLeafId final
+{
+    Term::Ptr term;
+    ClassId termId;
+};
+
 //------------------------------------------------------------------------------
 // Equivalence class
 
@@ -158,9 +165,9 @@ struct Class final
     Class(ClassId id, Term::Ptr term) :
         id(id), terms({term}) {}
 
-    void addParent(Term::Ptr term)
+    void addParent(Term::Ptr term, ClassId parentClassId)
     {
-        this->parents.push_back(term);
+        this->parents.push_back({term, parentClassId});
     }
 
     void uniteWith(const Class *other)
@@ -178,22 +185,17 @@ struct Class final
             term->restoreInvariants(unionFind);
         }
 
-        // Deduplicate using the shared pointer's pointer-wise equality and comparison operators
-        // for sorting, but it should be fine, since duplicate terms are checked on adding,
-        // so we shouldn't have duplicate terms here at all, only duplicate shared pointers
-
+        // deduplicate
         std::sort(this->terms.begin(), this->terms.end());
         this->terms.erase(std::unique(this->terms.begin(), this->terms.end()), this->terms.end());
 
-        std::sort(this->parents.begin(), this->parents.end());
-        this->parents.erase(std::unique(this->parents.begin(), this->parents.end()), this->parents.end());
     }
 
     const ClassId id;
 
     Vector<Term::Ptr> terms;
 
-    Vector<Term::Ptr> parents;
+    Vector<TermWithLeafId> parents;
 };
 
 //------------------------------------------------------------------------------
@@ -285,11 +287,18 @@ struct Graph final
 
     bool unite(ClassId termId1, ClassId termId2)
     {
-        const auto rootId1 = this->unionFind.find(termId1);
-        const auto rootId2 = this->unionFind.find(termId2);
+        auto rootId1 = this->unionFind.find(termId1);
+        auto rootId2 = this->unionFind.find(termId2);
         if (rootId1 == rootId2)
         {
             return false;
+        }
+
+        // make sure the new root has more parents
+        if (this->classes[rootId1]->parents.size() <
+            this->classes[rootId2]->parents.size())
+        {
+            std::swap(rootId1, rootId2);
         }
 
         this->unionFind.unite(rootId1, rootId2);
@@ -315,31 +324,21 @@ struct Graph final
 
         while (!this->dirtyTerms.empty())
         {
-            const auto updatedTerm = this->dirtyTerms.back();
+            const auto updated = this->dirtyTerms.back();
             this->dirtyTerms.pop_back();
 
-            const auto foundCachedTerm = this->termsLookup.find(updatedTerm);
-            assert(foundCachedTerm != this->termsLookup.end());
+            updated.term->restoreInvariants(this->unionFind);
 
-            const auto updatedLeafId = foundCachedTerm->second;
-            this->termsLookup.erase(foundCachedTerm);
-
-            updatedTerm->restoreInvariants(this->unionFind);
-
-            // Here the updatedTerm's children ids might have changed,
-            // so cache may contain a duplicate term, but with different
-            // leaf id, and if it does, make sure to unite those leaf ids,
-            // and if it doesn't, just put the term back in the cache
-
-            const auto foundOtherTerm = this->termsLookup.find(updatedTerm);
-            if (foundOtherTerm != this->termsLookup.end())
+            const auto cachedTerm = this->termsLookup.find(updated.term);
+            if (cachedTerm != this->termsLookup.end())
             {
-                const auto otherLeafId = foundOtherTerm->second;
-                this->unite(otherLeafId, updatedLeafId);
+                const auto cachedTermId = cachedTerm->second;
+                this->unite(cachedTermId, updated.termId);
+                this->termsLookup[updated.term] = updated.termId;
             }
             else
             {
-                this->termsLookup.insert({updatedTerm, updatedLeafId});
+                this->termsLookup.insert({updated.term, updated.termId});
             }
         }
 
@@ -508,12 +507,12 @@ struct Graph final
             {
                 const auto rootChildClassId = this->unionFind.find(childClassId);
                 assert(this->classes.find(rootChildClassId) != this->classes.end());
-                this->classes[rootChildClassId]->addParent(term);
+                this->classes[rootChildClassId]->addParent(term, newId);
             }
 
             this->classes[newId] = std::move(newClass);
             this->termsLookup.insert({term, newId});
-            this->dirtyTerms.push_back(term);
+            this->dirtyTerms.push_back({term, newId});
 
             return newId;
         }
@@ -532,12 +531,10 @@ struct Graph final
 
     UnionFind<ClassId> unionFind;
 
-    // Classes are identified by canonical class ids (root ids)
     HashMap<ClassId, UniquePointer<Class>> classes;
 
-    // Contains terms and their own uncanonicalized ids (leaf ids)
     HashMap<Term::Ptr, ClassId, Term::Hash> termsLookup;
 
-    Vector<Term::Ptr> dirtyTerms;
+    Vector<TermWithLeafId> dirtyTerms;
 };
 } // namespace e
