@@ -131,6 +131,12 @@ struct Term final
                (l->name == r->name && l->childrenIds == r->childrenIds);
     }
 
+    friend bool operator<(const Term::Ptr &l, const Term::Ptr &r)
+    {
+        return l->name < r->name ||
+               (l->name == r->name && l->childrenIds < r->childrenIds);
+    }
+
     template <typename UF>
     void restoreInvariants(UF &unionFind)
     {
@@ -188,7 +194,6 @@ struct Class final
         // deduplicate
         std::sort(this->terms.begin(), this->terms.end());
         this->terms.erase(std::unique(this->terms.begin(), this->terms.end()), this->terms.end());
-
     }
 
     const ClassId id;
@@ -306,9 +311,6 @@ struct Graph final
         auto *class1 = this->classes[rootId1].get();
         const auto *class2 = this->classes[rootId2].get();
 
-        assert(rootId1 == class1->id);
-        assert(rootId2 == class2->id);
-
         append(this->dirtyTerms, class2->parents);
 
         class1->uniteWith(class2);
@@ -330,16 +332,11 @@ struct Graph final
             updated.term->restoreInvariants(this->unionFind);
 
             const auto cachedTerm = this->termsLookup.find(updated.term);
-            if (cachedTerm != this->termsLookup.end())
-            {
-                const auto cachedTermId = cachedTerm->second;
-                this->unite(cachedTermId, updated.termId);
-                this->termsLookup[updated.term] = updated.termId;
-            }
-            else
-            {
-                this->termsLookup.insert({updated.term, updated.termId});
-            }
+            assert(cachedTerm != this->termsLookup.end());
+
+            const auto cachedTermId = cachedTerm->second;
+            this->unite(cachedTermId, updated.termId);
+            this->termsLookup[updated.term] = updated.termId;
         }
 
         // Rebuild equivalence classes
@@ -352,9 +349,18 @@ struct Graph final
 
     void rewrite(const RewriteRule &rewriteRule)
     {
-        Vector<Match> matches;
-
+        Vector<ClassId> oldClassIds;
         for (const auto &[classId, classPtr] : this->classes)
+        {
+            oldClassIds.push_back(classId);
+        }
+
+        // Iterating only over the existing classes here,
+        // because this loop will instantiate more classes,
+        // and may get stuck, depending on rewrite rules
+
+        Vector<Match> matches;
+        for (const auto &classId : oldClassIds)
         {
             SymbolBindings::Ptr emptyBindings = make<SymbolBindings>();
             const auto matchResult = this->matchPattern(rewriteRule.leftHand, classId, emptyBindings);

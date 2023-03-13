@@ -63,6 +63,7 @@ void rewriteAssociativityRuleTest()
 
     // then
     eGraph.rewrite(associativityRule);
+    eGraph.rewrite(associativityRule); // needs one more iteration
     assert(eGraph.find(ab_c_d) == eGraph.find(a_b_cd));
 }
 
