@@ -28,13 +28,13 @@ void rewriteAssociativityRuleTest()
     e::Graph eGraph;
 
     // given
-    const auto x = e::Symbol("x");
-    const auto y = e::Symbol("y");
-    const auto z = e::Symbol("z");
+    const auto x = "x";
+    const auto y = "y";
+    const auto z = "z";
 
     e::RewriteRule associativityRule;
-    associativityRule.leftHand = e::makePatternTerm("+", {e::makePatternTerm("+", {x, y}), z});
-    associativityRule.rightHand = e::makePatternTerm("+", {x, e::makePatternTerm("+", {y, z})});
+    associativityRule.leftHand = e::PatternTerm("+", {e::PatternTerm("+", {{x}, {y}}), {z}});
+    associativityRule.rightHand = e::PatternTerm("+", {{x}, e::PatternTerm("+", {{y}, {z}})});
 
     // when
     const auto a = eGraph.addTerm("a");
@@ -73,8 +73,8 @@ void rewriteIdentityRuleTest()
 
     // given
     e::RewriteRule identityRule;
-    identityRule.leftHand = e::makePatternTerm("*", {e::Symbol("x"), e::makePatternTerm("1")});
-    identityRule.rightHand = e::Symbol("x");
+    identityRule.leftHand = e::PatternTerm("*", {{"x"}, {e::PatternTerm("1", {})}});
+    identityRule.rightHand = "x";
 
     // when
     const auto a = eGraph.addTerm("a");
@@ -103,8 +103,8 @@ void rewriteZeroRuleTest()
 
     // given
     e::RewriteRule zeroRule;
-    zeroRule.leftHand = e::makePatternTerm("*", {e::Symbol("x"), e::makePatternTerm("0")});
-    zeroRule.rightHand = e::makePatternTerm("0");
+    zeroRule.leftHand = e::PatternTerm("*", {{"x"}, e::PatternTerm("0", {})});
+    zeroRule.rightHand = e::PatternTerm("0", {});
 
     // when
     const auto a = eGraph.addTerm("a");

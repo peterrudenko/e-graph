@@ -11,6 +11,7 @@
 
 #include <cassert>
 #include <memory>
+#include <string>
 #include <vector>
 #include <optional>
 #include <variant>
@@ -49,9 +50,6 @@ inline auto make(Args &&...args)
 
 template <typename T>
 using Optional = std::optional<T>;
-
-template <typename T1, typename T2>
-using Variant = std::variant<T1, T2>;
 
 template <typename T>
 using Vector = std::vector<T>;
@@ -215,13 +213,52 @@ using PatternVariable = Symbol;
 // <Symbol x> <PatternTerm op> <PatternTerm identity> -> <Symbol x>
 // and the zero rule would look like:
 // <Symbol x> <PatternTerm op> <PatternTerm zero> -> <PatternTerm zero>
-using Pattern = Variant<PatternVariable, PatternTerm>;
+
+// Pattern could be defined like this:
+//using Pattern = std::variant<PatternVariable, PatternTerm>;
+
+// Yet some compilers (looking at you, Cheerp) don't support
+// the variant class, so here we go with a simple replacement:
+struct Pattern final
+{
+    Pattern() = default;
+
+    Pattern(PatternVariable &&symbol);
+    Pattern &operator =(PatternVariable &&symbol);
+
+    Pattern(PatternTerm &&term);
+    Pattern &operator =(PatternTerm &&term);
+
+    SharedPointer<PatternVariable> variable;
+    SharedPointer<PatternTerm> term;
+};
 
 struct PatternTerm final
 {
+    PatternTerm() = default;
+    PatternTerm(PatternTerm &&other) = default;
+    PatternTerm(const Symbol &name, Vector<Pattern> &&arguments) :
+        name(name), arguments(move(arguments)) {}
+
     Symbol name;
     Vector<Pattern> arguments;
 };
+
+Pattern::Pattern(PatternVariable &&symbol) : variable(make<PatternVariable>(move(symbol))) {}
+Pattern &Pattern::operator =(PatternVariable &&symbol)
+{
+    assert(this->term == nullptr);
+    this->variable = make<PatternVariable>(move(symbol));
+    return *this;
+}
+
+Pattern::Pattern(PatternTerm &&term) : term(make<PatternTerm>(std::move(term))) {}
+Pattern &Pattern::operator =(PatternTerm &&term)
+{
+    assert(this->variable == nullptr);
+    this->term = make<PatternTerm>(std::move(term));
+    return *this;
+}
 
 struct SymbolBindings final
 {
@@ -260,14 +297,6 @@ struct Match final
 {
     ClassId id1;
     ClassId id2;
-};
-
-Pattern makePatternTerm(const Symbol &name, const Vector<Pattern> &arguments = {})
-{
-    PatternTerm term;
-    term.name = name;
-    term.arguments = arguments;
-    return Pattern(term);
 };
 
 //------------------------------------------------------------------------------
@@ -382,11 +411,11 @@ struct Graph final
     Vector<SymbolBindings::Ptr> matchPattern(const Pattern &pattern,
         ClassId classId, SymbolBindings::Ptr bindings)
     {
-        if (const auto *patternVariable = std::get_if<PatternVariable>(&pattern))
+        if (const auto *patternVariable = pattern.variable.get())
         {
             return this->matchVariable(*patternVariable, classId, bindings);
         }
-        else if (const auto *patternTerm = std::get_if<PatternTerm>(&pattern))
+        else if (const auto *patternTerm = pattern.term.get())
         {
             return this->matchTerm(*patternTerm, classId, bindings);
         }
@@ -466,11 +495,11 @@ struct Graph final
 
     ClassId instantiatePattern(const Pattern &pattern, SymbolBindings::Ptr bindings)
     {
-        if (const auto *subVariable = std::get_if<PatternVariable>(&pattern))
+        if (const auto *subVariable = pattern.variable.get())
         {
             return this->instantiateVariable(*subVariable, bindings);
         }
-        else if (const auto *subTerm = std::get_if<PatternTerm>(&pattern))
+        else if (const auto *subTerm = pattern.term.get())
         {
             return this->instantiateOperation(*subTerm, bindings);
         }
@@ -479,7 +508,7 @@ struct Graph final
         return -1;
     }
 
-    ClassId instantiateVariable(const PatternVariable &variable, SymbolBindings::Ptr bindings)
+    ClassId instantiateVariable(const PatternVariable &variable, SymbolBindings::Ptr bindings) const
     {
         const auto result = bindings->find(variable);
         assert(result);
