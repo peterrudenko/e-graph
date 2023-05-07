@@ -12,6 +12,7 @@
 #include <cassert>
 #include <memory>
 #include <vector>
+#include <string>
 #include <optional>
 #include <variant>
 #include <unordered_map>
