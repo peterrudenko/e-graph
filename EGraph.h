@@ -293,31 +293,23 @@ struct Graph final
 
     bool unite(ClassId termId1, ClassId termId2)
     {
-        auto rootId1 = this->unionFind.find(termId1);
-        auto rootId2 = this->unionFind.find(termId2);
+        const auto rootId1 = this->unionFind.find(termId1);
+        const auto rootId2 = this->unionFind.find(termId2);
         if (rootId1 == rootId2)
         {
             return false;
         }
 
-        // make sure the new root has more parents
-        if (this->classes[rootId1]->parents.size() <
-            this->classes[rootId2]->parents.size())
-        {
-            std::swap(rootId1, rootId2);
-        }
-
         this->unionFind.unite(rootId1, rootId2);
 
         auto *class1 = this->classes[rootId1].get();
-        const auto *class2 = this->classes[rootId2].get();
-
-        append(this->dirtyTerms, class2->parents);
+        auto *class2 = this->classes[rootId2].get();
 
         class1->uniteWith(class2);
 
         this->classes.erase(rootId2);
 
+        append(this->dirtyTerms, class1->parents);
         return true;
     }
 
