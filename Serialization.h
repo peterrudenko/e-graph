@@ -9,7 +9,6 @@
 
 #pragma once
 
-#include "Common.h"
 #include "EGraph.h"
 
 // This e-graph serialization example uses Cereal,
@@ -31,10 +30,10 @@ struct GraphDTO final
     struct Term final
     {
         Id leafId;
-        String name;
+        Symbol name;
         Vector<Id> childrenIds;
 
-        template <class Archive>
+        template <typename Archive>
         void serialize(Archive &archive)
         {
             archive(this->leafId, this->name, this->childrenIds);
@@ -47,7 +46,7 @@ struct GraphDTO final
         Vector<Id> termIds;
         Vector<Id> parentIds;
 
-        template <class Archive>
+        template <typename Archive>
         void serialize(Archive &archive)
         {
             archive(this->classId, this->termIds, this->parentIds);
@@ -58,14 +57,14 @@ struct GraphDTO final
     Vector<Term> terms;
     Vector<Class> classes;
 
-    template <class Archive>
+    template <typename Archive>
     void serialize(Archive &archive)
     {
         archive(this->unionFind, this->terms, this->classes);
     }
 };
 
-static String serialize(const Graph &eGraph)
+static std::string serialize(const Graph &eGraph)
 {
     GraphDTO dto;
     dto.unionFind = eGraph.unionFind.parents;
@@ -87,29 +86,29 @@ static String serialize(const Graph &eGraph)
 
         for (const auto &parent : classPtr->parents)
         {
-            c.parentIds.push_back(eGraph.termsLookup.at(parent));
+            c.parentIds.push_back(eGraph.termsLookup.at(parent.term));
         }
 
-        dto.classes.push_back(move(c));
+        dto.classes.push_back(std::move(c));
     }
 
-    std::stringstream ss;
+    std::stringstream stream;
 
     {
-        cereal::PortableBinaryOutputArchive serializer(ss);
+        cereal::PortableBinaryOutputArchive serializer(stream);
         serializer(dto);
     }
 
-    return ss.str();
+    return stream.str();
 }
 
-static Graph deserialize(const String &data)
+static Graph deserialize(const std::string &data)
 {
     GraphDTO dto;
 
     {
-        std::stringstream ss(data);
-        cereal::PortableBinaryInputArchive deserializer(ss);
+        std::stringstream stream(data);
+        cereal::PortableBinaryInputArchive deserializer(stream);
         deserializer(dto);
     }
 
