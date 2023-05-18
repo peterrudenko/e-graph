@@ -263,14 +263,6 @@ struct Match final
     ClassId id2;
 };
 
-Pattern makePatternTerm(const Symbol &name, const Vector<Pattern> &arguments = {})
-{
-    PatternTerm term;
-    term.name = name;
-    term.arguments = arguments;
-    return Pattern(term);
-};
-
 //------------------------------------------------------------------------------
 // E-graph
 
